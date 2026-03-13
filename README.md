@@ -2,36 +2,6 @@
 
 A Telegram bot for tracking crypto & stock prices with AI-powered predictions.
 
-## Setup (5 minutes)
-
-### 1. Get your Telegram bot token
-1. Open Telegram and search for **@BotFather**
-2. Send `/newbot`
-3. Follow the prompts — pick a name and username
-4. Copy the token it gives you
-
-### 2. Configure your environment
-```bash
-cp .env.example .env
-```
-Open `.env` and paste your token:
-```
-TELEGRAM_BOT_TOKEN=123456:ABC-your-token-here
-ALPHA_VANTAGE_KEY=demo
-```
-> Get a free Alpha Vantage key at https://www.alphavantage.co/support/#api-key
-> (optional — demo key works for IBM only)
-
-### 3. Install & run
-```bash
-npm install
-node bot.js
-```
-
-Your bot is now live! Open Telegram and message your bot.
-
----
-
 ## Commands
 
 | Command | Description |
