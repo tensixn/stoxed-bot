@@ -8,7 +8,7 @@ A Telegram bot for tracking crypto & stock prices with AI-powered predictions.
 |---|---|
 | `/price <symbol>` | Live price + 24h change |
 | `/predict <symbol>` | AI analysis with signal, targets, risks |
-| `/watch <symbol>L` | Add to your watchlist |
+| `/watch <symbol>` | Add to your watchlist |
 | `/watchlist` | View all watched assets with prices |
 | `/unwatch <symbol>` | Remove from watchlist |
 | `/addholding <symbol> <qty> <cost>` | Track a position (symbol, qty, cost basis) |
