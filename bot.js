@@ -46,9 +46,9 @@ bot.start((ctx) => {
     `📋 \`/watchlist\` — view your watchlist\n` +
     `🗑 \`/unwatch <symbol>\` — remove from watchlist\n` +
     `💼 \`/portfolio\` — P&L on tracked holdings\n` +
-    `⚠️ \`/alert <symbol> 90000\` — price alert\n` +
+    `⚠️ \`/alert <symbol> <price>\` — price alert\n` +
     `📰 \`/news\` — top market headlines\n` +
-    `📰 \`/news <symbol\` — news for a specific asset\n` +
+    `📰 \`/news <symbol>\` — news for a specific asset\n` +
     `❓ \`/help\` — show this menu again\n\n` +
     `Supports crypto \\(BTC, ETH, SOL, BNB, ADA, XRP, DOGE, AVAX\\) and stocks \\(IBM, AAPL etc\\.\\)`
   );
