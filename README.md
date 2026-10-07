@@ -23,7 +23,19 @@ A Telegram bot for tracking crypto & stock prices with AI-powered predictions.
 
 **Crypto:** BTC, ETH, SOL, BNB, ADA, DOGE, XRP, AVAX
 
-**Stocks:** Any symbol supported by Alpha Vantage (IBM works on demo key; upgrade for AAPL, TSLA etc.)
+**Stocks:** Any ticker Yahoo Finance knows (AAPL, TSLA, IBM…). No key needed.
+
+## Environment variables
+
+| Variable | Required | Used for |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | yes | Telegram bot |
+| `ANTHROPIC_API_KEY` | for `/predict` | AI analysis |
+| `NEWS_API_KEY` | for `/news` | NewsAPI headlines |
+| `COINGECKO_API_KEY` | no | Free CoinGecko demo key; raises the crypto rate limit |
+| `ANTHROPIC_MODEL` | no | Override the Claude model (default `claude-sonnet-5-5`) |
+
+`ALPHA_VANTAGE_KEY` is no longer used.
 
 ---
 
@@ -48,7 +60,7 @@ A Telegram bot for tracking crypto & stock prices with AI-powered predictions.
 ```
 mktwatch-bot/
 ├── bot.js        # Main bot — all commands and alert checker
-├── market.js     # CoinGecko + Alpha Vantage API + technical indicators
+├── market.js     # CoinGecko + Yahoo Finance API + technical indicators
 ├── ai.js         # Claude API integration for predictions
 ├── db.js         # JSON file database (watchlist, holdings, alerts)
 ├── .env          # Your secret keys (never commit this)

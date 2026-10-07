@@ -1,16 +1,7 @@
 import "dotenv/config";
-import { Telegraf, Markup } from "telegraf";
-import fetch from "node-fetch";
+import { Telegraf } from "telegraf";
 import db from "./db.js";
-import {
-  fetchCryptoData,
-  fetchStockData,
-  calcRSI,
-  calcSMA,
-  calcVolatility,
-  generateMockChart,
-  fmt,
-} from "./market.js";
+import { ApiError, fetchAsset, fetchJson, fmt } from "./market.js";
 import { getAIPrediction } from "./ai.js";
 
 // ── Bot setup ────────────────────────────────────────────────────────────────
@@ -35,9 +26,9 @@ function changeEmoji(pct) {
 }
 
 // ── /start ───────────────────────────────────────────────────────────────────
-bot.start((ctx) => {
+bot.start(async (ctx) => {
   const name = ctx.from.first_name || "there";
-  ctx.replyWithMarkdownV2(
+  await ctx.replyWithMarkdownV2(
     `👋 *Hey ${esc(name)}\\!* Welcome to *Stoxed*\n\n` +
     `Here's what I can do:\n\n` +
     `📊 \`/price <symbol>\` — live price & stats\n` +
@@ -78,7 +69,7 @@ bot.command("price", async (ctx) => {
   const msg = await ctx.reply("⏳ Fetching price...");
 
   try {
-    const asset = await fetchCryptoData(symbol).catch(() => fetchStockData(symbol));
+    const asset = await fetchAsset(symbol);
     const arrow = asset.change >= 0 ? "▲" : "▼";
     const changeStr = `${arrow} ${Math.abs(asset.change).toFixed(2)}%`;
 
@@ -93,8 +84,11 @@ bot.command("price", async (ctx) => {
       { parse_mode: "MarkdownV2" }
     );
   } catch (e) {
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
-      `❌ Couldn't find *${esc(symbol)}*\\. Try: BTC, ETH, SOL, IBM`,
+    console.error(`/price ${symbol}:`, e.message);
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
+      e instanceof ApiError
+        ? `❌ Price data is unavailable right now \\(${esc(e.message)}\\)\\. Try again in a minute\\.`
+        : `❌ Couldn't find *${esc(symbol)}*\\. Try: BTC, ETH, SOL, IBM`,
       { parse_mode: "MarkdownV2" }
     );
   }
@@ -109,7 +103,7 @@ bot.command("predict", async (ctx) => {
   const msg = await ctx.reply("🤖 Analyzing market signals...");
 
   try {
-    const asset = await fetchCryptoData(symbol).catch(() => fetchStockData(symbol));
+    const asset = await fetchAsset(symbol, { history: true });
     const prediction = await getAIPrediction(asset);
 
     const sig = signalEmoji(prediction.signal);
@@ -134,7 +128,8 @@ bot.command("predict", async (ctx) => {
       { parse_mode: "MarkdownV2" }
     );
   } catch (e) {
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
+    console.error(`/predict ${symbol}:`, e.message);
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
       `❌ Prediction failed for *${esc(symbol)}*\\. Please try again\\.`,
       { parse_mode: "MarkdownV2" }
     );
@@ -148,11 +143,11 @@ bot.command("watch", async (ctx) => {
   if (!symbol) return ctx.reply("Usage: /watch BTC");
 
   try {
-    const asset = await fetchCryptoData(symbol).catch(() => fetchStockData(symbol));
+    const asset = await fetchAsset(symbol);
     db.addToWatchlist(ctx.from.id, asset.symbol, asset.type);
-    ctx.reply(`👀 Added *${asset.symbol}* to your watchlist\\!`, { parse_mode: "MarkdownV2" });
+    await ctx.reply(`👀 Added *${asset.symbol}* to your watchlist\\!`, { parse_mode: "MarkdownV2" });
   } catch (e) {
-    ctx.reply(`❌ Couldn't find *${esc(symbol)}*\\.`, { parse_mode: "MarkdownV2" });
+    await ctx.reply(`❌ Couldn't find *${esc(symbol)}*\\.`, { parse_mode: "MarkdownV2" });
   }
 });
 
@@ -163,7 +158,7 @@ bot.command("unwatch", async (ctx) => {
   if (!symbol) return ctx.reply("Usage: /unwatch BTC");
 
   db.removeFromWatchlist(ctx.from.id, symbol);
-  ctx.reply(`🗑 Removed *${esc(symbol)}* from your watchlist\\.`, { parse_mode: "MarkdownV2" });
+  await ctx.reply(`🗑 Removed *${esc(symbol)}* from your watchlist\\.`, { parse_mode: "MarkdownV2" });
 });
 
 // ── /watchlist ────────────────────────────────────────────────────────────────
@@ -176,9 +171,7 @@ bot.command("watchlist", async (ctx) => {
   try {
     const results = await Promise.allSettled(
       items.map(item =>
-        item.type === "crypto"
-          ? fetchCryptoData(item.symbol)
-          : fetchStockData(item.symbol)
+        fetchAsset(item.symbol)
       )
     );
 
@@ -194,9 +187,9 @@ bot.command("watchlist", async (ctx) => {
     });
 
     text += `\n_Use /predict <\\symbol\\> for AI analysis_`;
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, text, { parse_mode: "MarkdownV2" });
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, text, { parse_mode: "MarkdownV2" });
   } catch (e) {
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ Failed to fetch watchlist prices\\.", { parse_mode: "MarkdownV2" });
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ Failed to fetch watchlist prices\\.", { parse_mode: "MarkdownV2" });
   }
 });
 
@@ -217,7 +210,7 @@ bot.command("portfolio", async (ctx) => {
   try {
     const results = await Promise.allSettled(
       holdings.map(h =>
-        h.type === "crypto" ? fetchCryptoData(h.symbol) : fetchStockData(h.symbol)
+        fetchAsset(h.symbol)
       )
     );
 
@@ -253,7 +246,7 @@ bot.command("portfolio", async (ctx) => {
       { parse_mode: "MarkdownV2" }
     );
   } catch (e) {
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ Failed to fetch portfolio data\\.", { parse_mode: "MarkdownV2" });
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ Failed to fetch portfolio data\\.", { parse_mode: "MarkdownV2" });
   }
 });
 
@@ -269,13 +262,13 @@ bot.command("addholding", async (ctx) => {
   }
 
   try {
-    const asset = await fetchCryptoData(symbol).catch(() => fetchStockData(symbol));
+    const asset = await fetchAsset(symbol);
     db.addHolding(ctx.from.id, symbol, asset.type, shares, costBasis);
-    ctx.replyWithMarkdownV2(
+    await ctx.replyWithMarkdownV2(
       `💼 Added holding:\n*${esc(symbol)}* — ${esc(String(shares))} units @ \\$${esc(fmt(costBasis))}`
     );
   } catch (e) {
-    ctx.reply(`❌ Symbol not found: ${symbol}`);
+    await ctx.reply(`❌ Symbol not found: ${symbol}`);
   }
 });
 
@@ -289,14 +282,23 @@ bot.command("alert", async (ctx) => {
     return ctx.reply("Usage: /alert BTC 90000\n(triggers when price crosses that level)");
   }
 
-  db.addAlert(ctx.from.id, symbol, targetPrice);
-  ctx.replyWithMarkdownV2(
+  // Check the symbol now (an unknown one would never fire) and record the current
+  // price so the alert can trigger on the very next check.
+  let asset;
+  try {
+    asset = await fetchAsset(symbol);
+  } catch (e) {
+    return ctx.reply(`❌ Couldn't get a price for ${symbol}: ${e.message}`);
+  }
+
+  db.addAlert(ctx.from.id, symbol, targetPrice, asset.price);
+  await ctx.replyWithMarkdownV2(
     `⚠️ Alert set\\! I'll notify you when *${esc(symbol)}* crosses \\$${esc(fmt(targetPrice))}\\.`
   );
 });
 
 // ── /alerts ───────────────────────────────────────────────────────────────────
-bot.command("alerts", (ctx) => {
+bot.command("alerts", async (ctx) => {
   const alerts = db.getAlerts(ctx.from.id);
   if (!alerts.length) return ctx.reply("No alerts set\\. Use /alert BTC 90000 to add one\\.", { parse_mode: "MarkdownV2" });
 
@@ -305,7 +307,7 @@ bot.command("alerts", (ctx) => {
     text += `ID ${esc(String(a.id))}: *${esc(a.symbol)}* → \\$${esc(fmt(a.targetPrice))}\n`;
   });
   text += `\n_Use /removealert \\<id\\> to delete_`;
-  ctx.replyWithMarkdownV2(text);
+  await ctx.replyWithMarkdownV2(text);
 });
 
 // ── /news ─────────────────────────────────────────────────────────────────────
@@ -317,11 +319,16 @@ bot.command("news", async (ctx) => {
 
   const msg = await ctx.reply("📰 Fetching latest news...");
 
+  if (!process.env.NEWS_API_KEY) {
+    return ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, "❌ News is not configured (NEWS_API_KEY missing).");
+  }
+
   try {
-    const res = await fetch(
-      `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=5&apiKey=${process.env.NEWS_API_KEY}`
+    // Key goes in a header so it never shows up in logged URLs.
+    const json = await fetchJson(
+      `https://newsapi.org/v2/everything?q=${encodeURIComponent(query)}&language=en&sortBy=publishedAt&pageSize=5`,
+      { headers: { "X-Api-Key": process.env.NEWS_API_KEY } }
     );
-    const json = await res.json();
 
     if (!json.articles?.length) {
       return ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
@@ -337,60 +344,89 @@ bot.command("news", async (ctx) => {
         const desc = article.description.slice(0, 120) + (article.description.length > 120 ? "…" : "");
         text += `${esc(desc)}\n`;
       }
-      text += `[Read more](${article.url})\n\n`;
+      // Inside a MarkdownV2 link target only ")" and "\\" need escaping.
+      text += `[Read more](${article.url.replace(/[)\\]/g, "\\$&")})\n\n`;
     });
 
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, text, {
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null, text, {
       parse_mode: "MarkdownV2",
       disable_web_page_preview: true,
     });
   } catch (e) {
-    ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
+    console.error("News fetch failed:", e.message);
+    await ctx.telegram.editMessageText(ctx.chat.id, msg.message_id, null,
       "❌ Failed to fetch news\\. Please try again\\.", { parse_mode: "MarkdownV2" });
   }
 });
 
 // ── /removealert ──────────────────────────────────────────────────────────────
-bot.command("removealert", (ctx) => {
+bot.command("removealert", async (ctx) => {
   const id = parseInt(ctx.message.text.split(" ")[1]);
   if (isNaN(id)) return ctx.reply("Usage: /removealert 1");
   db.removeAlert(id, ctx.from.id);
-  ctx.reply(`🗑 Alert #${id} removed.`);
+  await ctx.reply(`🗑 Alert #${id} removed.`);
 });
 
 // ── Price alert checker (every 5 minutes) ─────────────────────────────────────
+let checkingAlerts = false;
+
 async function checkAlerts() {
-  const alerts = db.getAllAlerts();
-  if (!alerts.length) return;
+  if (checkingAlerts) return; // a slow run must not overlap the next one
+  checkingAlerts = true;
+  try {
+    const alerts = db.getAllAlerts();
+    // One price lookup per symbol, not per alert, to stay inside API rate limits.
+    const prices = new Map();
+    for (const symbol of new Set(alerts.map(a => a.symbol))) {
+      try {
+        prices.set(symbol, (await fetchAsset(symbol)).price);
+      } catch (e) {
+        console.error(`Alert check: price for ${symbol} unavailable: ${e.message}`);
+      }
+    }
 
-  for (const alert of alerts) {
-    try {
-      const asset = await fetchCryptoData(alert.symbol).catch(() => fetchStockData(alert.symbol));
+    for (const alert of alerts) {
+      const price = prices.get(alert.symbol);
+      if (price == null) continue;
+
       const crossed =
-        (alert.lastPrice && alert.lastPrice < alert.targetPrice && asset.price >= alert.targetPrice) ||
-        (alert.lastPrice && alert.lastPrice > alert.targetPrice && asset.price <= alert.targetPrice);
+        (alert.lastPrice != null && alert.lastPrice < alert.targetPrice && price >= alert.targetPrice) ||
+        (alert.lastPrice != null && alert.lastPrice > alert.targetPrice && price <= alert.targetPrice);
 
-      db.updateAlertLastPrice(alert.id, asset.price);
+      db.updateAlertLastPrice(alert.id, price);
 
       if (crossed) {
-        const direction = asset.price >= alert.targetPrice ? "🚀 crossed above" : "📉 dropped below";
-        await bot.telegram.sendMessage(
-          alert.userId,
-          `⚠️ *Alert triggered\\!*\n\n*${esc(alert.symbol)}* has ${direction} \\$${esc(fmt(alert.targetPrice))}\n` +
-          `Current price: \\$${esc(fmt(asset.price))}`,
-          { parse_mode: "MarkdownV2" }
-        );
+        const direction = price >= alert.targetPrice ? "🚀 crossed above" : "📉 dropped below";
+        try {
+          await bot.telegram.sendMessage(
+            alert.userId,
+            `⚠️ *Alert triggered\\!*\n\n*${esc(alert.symbol)}* has ${direction} \\$${esc(fmt(alert.targetPrice))}\n` +
+            `Current price: \\$${esc(fmt(price))}`,
+            { parse_mode: "MarkdownV2" }
+          );
+        } catch (e) {
+          console.error(`Alert ${alert.id}: could not notify user: ${e.message}`);
+        }
       }
-    } catch (e) {
-      // silently skip failed checks
     }
+  } finally {
+    checkingAlerts = false;
   }
 }
 
-setInterval(checkAlerts, 5 * 60 * 1000); // every 5 min
+setInterval(() => checkAlerts().catch(e => console.error("Alert check failed:", e)), 5 * 60 * 1000);
+
+// ── Error handling ────────────────────────────────────────────────────────────
+// Without this, Telegraf rethrows handler errors and stops polling.
+bot.catch((err, ctx) => {
+  console.error(`Error handling update ${ctx.update?.update_id}:`, err);
+});
 
 // ── Launch ────────────────────────────────────────────────────────────────────
-bot.launch();
+bot.launch().catch((e) => {
+  console.error("❌ Failed to start bot:", e.message);
+  process.exit(1);
+});
 console.log("🚀 MKTWATCH bot is running...");
 
 process.once("SIGINT", () => bot.stop("SIGINT"));

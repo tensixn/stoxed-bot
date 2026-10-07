@@ -42,9 +42,9 @@ function getHoldings(userId) {
   return db.data.holdings.filter(h => h.userId === userId);
 }
 
-function addAlert(userId, symbol, targetPrice) {
+function addAlert(userId, symbol, targetPrice, lastPrice = null) {
   const id = db.data.nextAlertId++;
-  db.data.alerts.push({ id, userId, symbol, targetPrice, lastPrice: null, createdAt: new Date().toISOString() });
+  db.data.alerts.push({ id, userId, symbol, targetPrice, lastPrice, createdAt: new Date().toISOString() });
   save();
 }
 
