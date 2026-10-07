@@ -127,7 +127,11 @@ export async function fetchStockData(symbol, { history = false } = {}) {
   const json = await cached(`yf:${symbol.toUpperCase()}`, QUOTE_TTL_MS, () => fetchJson(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1mo`,
     { headers: { "User-Agent": "Mozilla/5.0" } }
-  ));
+  ).catch((e) => {
+    // Yahoo answers unknown tickers with a 404, which is "not found", not an outage.
+    if (e.status === 404) throw new Error("Not found");
+    throw e;
+  }));
   const result = json?.chart?.result?.[0];
   const meta = result?.meta;
   if (!meta || meta.regularMarketPrice == null) throw new Error("Not found");
